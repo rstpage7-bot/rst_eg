@@ -29,7 +29,7 @@ create table if not exists public.activities (
 create table if not exists public.activity_participants (
   id uuid primary key default gen_random_uuid(), activity_id uuid not null references public.activities(id) on delete cascade,
   join_request_id uuid not null references public.join_requests(id) on delete cascade,
-  status text not null default 'registered' check(status in ('pending','registered','approved','rejected','attended','absent')),
+  status text not null default 'registered' check(status in ('registered','approved','rejected','attended','absent')),
   created_at timestamptz not null default now(), unique(activity_id, join_request_id)
 );
 create table if not exists public.photo_albums (

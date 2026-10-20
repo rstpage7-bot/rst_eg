@@ -24,9 +24,8 @@ function App() {
   const [session, setSession] = useState(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [email, setEmail] = useState('')
-  const [memberEmail, setMemberEmail] = useState('')
+  const [memberStudentId, setMemberStudentId] = useState('')
   const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
   const [requests, setRequests] = useState([])
   const [filter, setFilter] = useState('pending')
   const [adminTab, setAdminTab] = useState('requests')
@@ -37,14 +36,7 @@ function App() {
   const [members, setMembers] = useState([])
   const [activityForm, setActivityForm] = useState({ title:'', description:'', location:'', starts_at:'', status:'open' })
   const [newsForm, setNewsForm] = useState({ title:'', body:'', published:true })
-  const [notificationForm, setNotificationForm] = useState({ title:'', body:'', target:'all', target_email:'' })
-  const [memberNotifications, setMemberNotifications] = useState([])
-  const [bellOpen, setBellOpen] = useState(false)
-  const [memberActivities, setMemberActivities] = useState([])
-  const [availableActivities, setAvailableActivities] = useState([])
-  const [activityRequests, setActivityRequests] = useState([])
-  const [adminParticipants, setAdminParticipants] = useState({})
-  const [memberSearch, setMemberSearch] = useState('')
+  const [notificationForm, setNotificationForm] = useState({ title:'', body:'' })
   const [albumForm, setAlbumForm] = useState({ title:'', description:'' })
   const [editingActivity, setEditingActivity] = useState(null)
   const [editingNews, setEditingNews] = useState(null)
@@ -86,8 +78,6 @@ function App() {
     }
     const { data: reqs } = await supabase.from('join_requests').select('*').eq('status','accepted').order('created_at',{ascending:false})
     if (reqs) setMembers(reqs)
-    const { data: pendingActivityRequests } = await supabase.from('activity_participants').select('id,activity_id,join_request_id,status,created_at,activities(title,starts_at),join_requests(full_name,email,student_id)').eq('status','pending').order('created_at',{ascending:false})
-    setActivityRequests(pendingActivityRequests || [])
   }
 
   async function loadRequests() {
@@ -99,88 +89,57 @@ function App() {
 
   async function submitJoin(e) {
     e.preventDefault()
-    if (!supabase) { setNotice('قاعدة البيانات غير مربوطة بعد. راجع إعدادات Supabase.'); return }
-    const formElement = e.currentTarget
-    const form = new FormData(formElement)
-    const row = Object.fromEntries(form.entries())
-    const newPassword = String(row.new_password || '')
-    if (newPassword.length < 8) { setNotice('كلمة المرور لازم تكون 8 أحرف على الأقل.'); return }
-    if (newPassword !== String(row.confirm_password || '')) { setNotice('كلمتا المرور غير متطابقتين.'); return }
+    if (!supabase) { setNotice('قاعدة البيانات غير مربوطة بعد. اتبع خطوات الإعداد في ملف README.'); return }
     setBusy(true); setNotice('')
-    // Password is sent only to Supabase Auth; it is never written to join_requests.
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: row.email.trim().toLowerCase(), password: newPassword,
-      options: { data: { full_name: row.full_name.trim(), student_id: row.student_id.trim() } }
-    })
-    if (authError) {
-      setBusy(false)
-      setNotice(authError.message.toLowerCase().includes('already') ? 'البريد مسجل بالفعل. استخدم دخول الأعضاء أو استعادة كلمة المرور.' : 'تعذر إنشاء حساب الدخول: ' + authError.message)
-      return
-    }
+    const form = new FormData(e.currentTarget)
+    const row = Object.fromEntries(form.entries())
     const { error } = await supabase.from('join_requests').insert([{
       full_name: row.full_name.trim(), student_id: row.student_id.trim(),
-      email: row.email.trim().toLowerCase(), phone: row.phone.trim(), faculty: row.faculty,
+      email: row.email.trim(), phone: row.phone.trim(), faculty: row.faculty,
       study_year: row.study_year, motivation: (row.motivation || '').trim(), status: 'pending'
     }])
-    if (error) {
-      // Auth account exists but no request was saved; explain next step rather than storing the password.
-      setBusy(false)
-      setNotice('تم إنشاء حساب الدخول، لكن لم يُحفظ طلب الانضمام. تواصل مع الإدارة قبل إعادة المحاولة. التفاصيل: ' + error.message)
-      return
-    }
-    if (authData?.session) await supabase.auth.signOut()
     setBusy(false)
-    setNotice('تم إنشاء حساب الدخول وإرسال طلب الانضمام للمراجعة. لن تتمكن من دخول مساحة الأعضاء إلا بعد اعتماد الطلب.')
-    formElement.reset(); setJoinOpen(false); setConfirmPassword(''); setPassword('')
+    if (error) setNotice('لم يتم إرسال الطلب. راجع إعداد Supabase أو حاول مرة أخرى.')
+    else { setNotice('تم استلام طلبك بنجاح. سيظهر لمسؤول الجوالة للمراجعة.'); e.currentTarget.reset(); setJoinOpen(false) }
   }
 
   async function memberSignIn(e) {
     e.preventDefault()
     if (!supabase) { setNotice('اربط Supabase أولًا من إعدادات المشروع.'); return }
-    const loginEmail = memberEmail.trim().toLowerCase()
-    if (!loginEmail) { setNotice('اكتب البريد الإلكتروني.'); return }
+    const collegeNumber = memberStudentId.trim()
+    if (!collegeNumber) { setNotice('اكتب الرقم الجامعي.'); return }
     setBusy(true)
-    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password })
-    if (error) { setBusy(false); setNotice('البريد الإلكتروني أو كلمة المرور غير صحيحة، أو لم يتم تأكيد البريد الإلكتروني.'); return }
-    // تسجيل الدخول يعتمد على صحة بيانات Supabase Auth فقط؛ بيانات طلب العضوية اختيارية للعرض.
-    // لو الطلب غير موجود أو قراءة الجدول ممنوعة بسياسات RLS، لا نرفض تسجيل الدخول.
-    const { data: memberRequest } = await supabase.from('join_requests')
+    // Resolve the college number to the email attached to an approved membership.
+    // The database must provide a narrowly scoped, secure lookup for this flow; do not expose join_requests broadly.
+    const { data: approved, error: lookupError } = await supabase.from('join_requests')
       .select('full_name,student_id,faculty,study_year,status,email')
-      .eq('email', loginEmail)
+      .eq('student_id', collegeNumber).eq('status','accepted').maybeSingle()
+    if (lookupError || !approved?.email) {
+      setBusy(false)
+      setNotice('لم نتمكن من العثور على عضوية معتمدة بهذا الرقم. تأكد من الرقم أو راجع مسؤول الجوالة.')
+      return
+    }
+    const { error } = await supabase.auth.signInWithPassword({ email: approved.email, password })
+    if (error) { setBusy(false); setNotice('الرقم الجامعي أو كلمة المرور غير صحيحة، أو لم يتم إنشاء حساب دخول لهذا العضو.'); return }
+    // Re-check membership after Auth succeeds, so a rejected/removed member cannot enter
+    // with an old Auth account or a stale browser session.
+    const { data: latestMembership, error: statusError } = await supabase
+      .from('join_requests')
+      .select('full_name,student_id,faculty,study_year,status,email')
+      .eq('student_id', collegeNumber)
+      .eq('email', approved.email)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
+    if (statusError || latestMembership?.status !== 'accepted') {
+      await supabase.auth.signOut()
+      setBusy(false)
+      setMemberInfo(null)
+      setNotice('تم رفض العضوية أو إزالتها، لذلك لا يمكنك دخول صفحة الأعضاء. تواصل مع مسؤول الجوالة إذا كنت تعتقد أن هذا خطأ.')
+      return
+    }
     setBusy(false)
-    const fallbackName = loginEmail.split('@')[0] || 'عضو جوالة'
-    setMemberInfo(memberRequest || { full_name:fallbackName, student_id:'غير مسجل', faculty:'لم تُسجل الكلية', study_year:'لم تُحدد الفرقة', status:'account', email:loginEmail })
-    await loadMemberPortal(loginEmail)
-    setMemberOpen(false)
-    setNotice('تم تسجيل الدخول بنجاح. افتح الجرس لمشاهدة الإشعارات والأنشطة.')
-  }
-
-  async function loadMemberPortal(emailAddress) {
-    if (!supabase || !emailAddress) return
-    const cleanEmail = emailAddress.trim().toLowerCase()
-    const { data: profile } = await supabase.from('join_requests').select('id,full_name,student_id,faculty,study_year,status,email').ilike('email', cleanEmail).eq('status','accepted').maybeSingle()
-    if (profile) setMemberInfo(profile)
-    const { data: notices } = await supabase.from('site_notifications').select('*').eq('published', true).order('created_at', { ascending: false })
-    setMemberNotifications((notices || []).filter(n => n.target === 'all' || n.target === 'members' || (n.target === 'individual' && (n.target_email || '').toLowerCase() === cleanEmail)))
-    const { data: openActs } = await supabase.from('activities').select('*').eq('status','open').order('starts_at',{ascending:true})
-    setAvailableActivities(openActs || [])
-    if (profile?.id) {
-      const { data: regs } = await supabase.from('activity_participants').select('id,status,activities(id,title,description,starts_at,location,status)').eq('join_request_id', profile.id)
-      setMemberActivities((regs || []).map(x => ({...x.activities, participation_status:x.status, participation_id:x.id})).filter(Boolean))
-      const { data: reqs } = await supabase.from('activity_participants').select('activity_id,status').eq('join_request_id',profile.id).eq('status','pending')
-      setActivityRequests(reqs || [])
-    } else { setMemberActivities([]); setActivityRequests([]) }
-  }
-
-  async function forgotMemberPassword() {
-    if (!supabase) { setNotice('اربط Supabase أولًا.'); return }
-    const recoveryEmail = window.prompt('اكتب البريد الإلكتروني المستخدم عند طلب الانضمام لإرسال رابط إعادة تعيين كلمة المرور:')
-    if (!recoveryEmail) return
-    setBusy(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(recoveryEmail.trim().toLowerCase(), { redirectTo: window.location.origin })
-    setBusy(false)
-    setNotice(error ? 'تعذر إرسال رابط الاستعادة. تأكد من البريد وإعدادات البريد في Supabase.' : 'لو البريد مسجل، هيوصلك رابط إعادة تعيين كلمة المرور. راجع الوارد والرسائل غير المرغوب فيها.')
+    setMemberInfo(latestMembership); setMemberOpen(false); setNotice('تم تسجيل دخول العضو بنجاح.')
   }
 
   async function signIn(e) {
@@ -196,41 +155,11 @@ function App() {
   async function updateStatus(id, status) {
     const { error } = await supabase.from('join_requests').update({ status }).eq('id', id)
     if (error) setNotice('لم يتغير وضع الطلب. تحقق من صلاحيات المسؤول.')
-    else { setNotice('تم تحديث حالة الطلب.'); loadRequests() }
-  }
-
-  async function applyForActivity(activityId) {
-    if (!supabase) { setNotice('قاعدة البيانات غير متصلة.'); return }
-    const { data: authResult } = await supabase.auth.getUser()
-    const signedInEmail = (authResult?.user?.email || memberInfo?.email || '').trim().toLowerCase()
-    if (!signedInEmail) { setNotice('سجّل دخولك بحساب العضو أولًا.'); return }
-    // Resolve the approved membership fresh from the signed-in email. The modal state may not include its row ID.
-    const { data: approvedMembership, error: membershipError } = await supabase.from('join_requests')
-      .select('id,full_name,student_id,faculty,study_year,status,email')
-      .ilike('email', signedInEmail).eq('status','accepted').maybeSingle()
-    if (membershipError) { setNotice('تعذر التحقق من العضوية. شغّل ملف SQL الخاص ببوابة الأعضاء ثم جرّب مرة أخرى.'); return }
-    if (!approvedMembership?.id) { setNotice('حسابك مسجّل، لكن طلب العضوية بهذا البريد غير معتمد بعد. راجع الأدمن لربط البريد بطلب عضويتك المعتمد.'); return }
-    setMemberInfo(approvedMembership)
-    const { error } = await supabase.from('activity_participants').insert({activity_id:activityId, join_request_id:approvedMembership.id, status:'pending'})
-    if (error) { setNotice(error.code === '23505' ? 'أنت مقدم بالفعل على النشاط ده.' : 'تعذر إرسال الطلب. تأكد من تشغيل تحديث قاعدة البيانات. (' + error.message + ')'); return }
-    await loadMemberPortal(signedInEmail); setNotice('تم إرسال طلب النشاط للإدارة بنجاح.')
-  }
-
-  async function assignMember(activityId, memberId) {
-    if (!memberId) { setNotice('اختار عضو الأول.'); return }
-    const { error } = await supabase.from('activity_participants').upsert({activity_id:activityId,join_request_id:memberId,status:'approved'},{onConflict:'activity_id,join_request_id'})
-    if (error) { setNotice('تعذر إضافة العضو للنشاط: ' + error.message); return }
-    const member = members.find(m=>m.id===memberId)
-    if (member?.email) await supabase.from('site_notifications').insert({title:'تمت إضافتك إلى نشاط',body:`تم تسجيلك في نشاط: ${activities.find(a=>a.id===activityId)?.title || ''}`,published:true,target:'individual',target_email:member.email})
-    setNotice('تمت إضافة العضو للنشاط وإرسال إشعار له.'); loadAdminData()
-  }
-
-  async function decideActivityRequest(id, status, request) {
-    const { error } = await supabase.from('activity_participants').update({status}).eq('id',id)
-    if (error) { setNotice('تعذر تحديث طلب النشاط: ' + error.message); return }
-    const { data: member } = await supabase.from('join_requests').select('email').eq('id',request.join_request_id).maybeSingle()
-    if (member?.email) await supabase.from('site_notifications').insert({title:status==='approved'?'تم قبول طلب النشاط':'تم رفض طلب النشاط',body:`${status==='approved'?'تمت الموافقة على طلبك في نشاط':'نعتذر، تم رفض طلبك في نشاط'}: ${request.activities?.title || ''}`,published:true,target:'individual',target_email:member.email})
-    setNotice(status==='approved'?'تم قبول الطلب وإرسال إشعار للعضو.':'تم رفض الطلب وإرسال إشعار للعضو.'); loadAdminData()
+    else {
+      if (status === 'rejected') setNotice('تم رفض/إزالة العضو. لن يتمكن من دخول صفحة الأعضاء بعد الآن.')
+      else setNotice('تم تحديث حالة الطلب.')
+      await Promise.all([loadRequests(), loadAdminData()])
+    }
   }
 
   async function saveActivity(e) {
@@ -260,11 +189,10 @@ function App() {
   }
   async function saveNotification(e) {
     e.preventDefault(); setBusy(true)
-    const target = notificationForm.target || 'all'
-    const { error } = await supabase.from('site_notifications').insert({title:notificationForm.title.trim(),body:notificationForm.body.trim(),published:true,target: target === 'individual' ? 'individual' : target, target_email: target === 'individual' ? notificationForm.target_email.trim().toLowerCase() : null, created_by:session?.user?.id})
+    const { error } = await supabase.from('site_notifications').insert({title:notificationForm.title.trim(),body:notificationForm.body.trim(),published:true})
     setBusy(false)
-    if (error) setNotice('تعذر نشر الإشعار. شغّل ملف التحديث SQL المرفق أولًا. التفاصيل: '+error.message)
-    else { setNotice(target==='individual'?'تم إرسال الإشعار للعضو المحدد.':'تم نشر الإشعار لكل الأعضاء.'); setNotificationForm({title:'',body:'',target:'all',target_email:''}); loadAdminData() }
+    if (error) setNotice('تعذر نشر الإشعار.')
+    else { setNotice('تم نشر الإشعار.'); setNotificationForm({title:'',body:''}); loadAdminData() }
   }
   async function uploadAlbum(e) {
     e.preventDefault(); if (!supabase) return
@@ -296,7 +224,7 @@ function App() {
       <button className="menu-button" aria-label="فتح القائمة" onClick={() => setMobileMenu(!mobileMenu)}>{mobileMenu ? <X/> : <Menu/>}</button>
       <nav className={mobileMenu ? 'nav nav-open' : 'nav'}>
         <a href="#about" onClick={() => setMobileMenu(false)}>عن الجوالة</a><a href="#values" onClick={() => setMobileMenu(false)}>قيمنا</a><a href="#activities" onClick={() => setMobileMenu(false)}>الأنشطة</a><a href="#gallery" onClick={() => setMobileMenu(false)}>معرض الصور</a>
-        <button className="nav-member" onClick={() => {if(memberInfo){setBellOpen(true)}else{setMemberOpen(true)}setMobileMenu(false)}}>{memberInfo ? <><Bell size={16}/> الإشعارات {memberNotifications.length>0 && <span className="bell-count">{memberNotifications.length}</span>}</> : <>دخول الأعضاء</>}</button><button className="nav-join" onClick={() => {setJoinOpen(true);setMobileMenu(false)}}>انضم للجوالة <ArrowUpLeft size={16}/></button>
+        <button className="nav-member" onClick={() => {setMemberOpen(true);setMobileMenu(false)}}>دخول الأعضاء</button><button className="nav-join" onClick={() => {setJoinOpen(true);setMobileMenu(false)}}>انضم للجوالة <ArrowUpLeft size={16}/></button>
       </nav>
     </header>
 
@@ -355,8 +283,6 @@ function App() {
       <label>الاسم بالكامل<input name="full_name" required minLength="2" maxLength="120" autoComplete="name"/></label>
       <label>الرقم الجامعي<input name="student_id" required minLength="2" maxLength="40"/></label>
       <label>البريد الإلكتروني<input type="email" name="email" required maxLength="254" autoComplete="email"/></label>
-      <label>كلمة المرور<input type="password" name="new_password" required minLength="8" maxLength="72" autoComplete="new-password" onChange={e => setPassword(e.target.value)}/><small className="field-help">8 أحرف على الأقل. لا يستطيع الأدمن رؤية كلمة المرور.</small></label>
-      <label>تأكيد كلمة المرور<input type="password" name="confirm_password" required minLength="8" maxLength="72" autoComplete="new-password" onChange={e => setConfirmPassword(e.target.value)}/>{confirmPassword && password !== confirmPassword && <small className="field-error">كلمتا المرور غير متطابقتين.</small>}</label>
       <label>رقم الهاتف<input type="tel" name="phone" required minLength="7" maxLength="30" autoComplete="tel"/></label>
       <label>الكلية<select name="faculty" required defaultValue=""><option value="" disabled>اختر الكلية</option>{faculties.map(f => <option key={f}>{f}</option>)}</select></label>
       <label>الفرقة الدراسية<select name="study_year" required defaultValue=""><option value="" disabled>اختر الفرقة</option>{['الأولى','الثانية','الثالثة','الرابعة','الخامسة','أخرى'].map(f => <option key={f}>{f}</option>)}</select></label>
@@ -365,24 +291,21 @@ function App() {
       {!isSupabaseConfigured && <p className="form-warning full-field">تنبيه: يلزم ربط قاعدة بيانات Supabase قبل استقبال الطلبات فعليًا.</p>}
     </form></section></div>}
 
-    {memberOpen && <div className="modal-backdrop" onClick={() => setMemberOpen(false)}><section className="modal admin-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setMemberOpen(false)} aria-label="إغلاق"><X/></button><div className="section-kicker">بوابة الأعضاء</div><h2>تسجيل دخول الأعضاء</h2><p className="modal-intro">استخدم البريد الإلكتروني وكلمة المرور. يجب أن تكون عضويتك معتمدة وحساب الدخول منشأً في Supabase Auth.</p><form onSubmit={memberSignIn} className="form-grid one-col"><label>البريد الإلكتروني<input type="email" value={memberEmail} onChange={e => setMemberEmail(e.target.value)} required autoComplete="username"/></label><label>كلمة المرور<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary" disabled={busy}>{busy ? 'جارٍ التحقق...' : 'دخول الأعضاء'}</button></form><button type="button" className="text-button" onClick={forgotMemberPassword} disabled={busy}>هل نسيت كلمة المرور؟</button>{!isSupabaseConfigured && <p className="form-warning">يلزم إعداد Supabase لتفعيل تسجيل الدخول.</p>}</section></div>}
+    {memberOpen && <div className="modal-backdrop" onClick={() => setMemberOpen(false)}><section className="modal admin-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setMemberOpen(false)} aria-label="إغلاق"><X/></button><div className="section-kicker">بوابة الأعضاء</div><h2>تسجيل دخول الأعضاء</h2><p className="modal-intro">استخدم الرقم الجامعي وكلمة المرور. يجب أن تكون عضويتك معتمدة وحساب الدخول منشأً في Supabase Auth.</p><form onSubmit={memberSignIn} className="form-grid one-col"><label>رقم الكلية / الرقم الجامعي<input inputMode="numeric" value={memberStudentId} onChange={e => setMemberStudentId(e.target.value)} required autoComplete="username"/></label><label>كلمة المرور<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary" disabled={busy}>{busy ? 'جارٍ التحقق...' : 'دخول الأعضاء'}</button></form>{!isSupabaseConfigured && <p className="form-warning">يلزم إعداد Supabase لتفعيل تسجيل الدخول.</p>}</section></div>}
 
-    {memberInfo && <div className="modal-backdrop" onClick={() => setMemberInfo(null)}><section className="modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setMemberInfo(null)} aria-label="إغلاق"><X/></button><div className="section-kicker">حساب العضو</div><h2>أهلًا {memberInfo.full_name}</h2><p className="modal-intro">بيانات الحساب</p><div className="member-profile"><p><b>الرقم الجامعي:</b> {memberInfo.student_id || 'لم يُسجل بعد'}</p><p><b>الكلية:</b> {memberInfo.faculty || 'لم تُسجل بعد'}</p><p><b>الفرقة:</b> {memberInfo.study_year || 'لم تُحدد بعد'}</p><p><b>حالة العضوية:</b> {memberInfo.status === 'accepted' ? 'عضوية معتمدة' : memberInfo.status === 'account' ? 'حساب الدخول موجود، وبيانات طلب العضوية تحتاج ربطًا بالبريد نفسه' : memberInfo.status}</p></div><button className="primary" onClick={()=>{setMemberInfo(null);setBellOpen(true)}}><Bell size={16}/> فتح بوابة العضو</button><button className="secondary-admin" onClick={async()=>{await supabase.auth.signOut();setMemberInfo(null);setMemberNotifications([]);setNotice('تم تسجيل الخروج.')}}>تسجيل الخروج</button></section></div>}
-
-    {bellOpen && <div className="modal-backdrop" onClick={()=>setBellOpen(false)}><section className="modal member-notices-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setBellOpen(false)} aria-label="إغلاق"><X/></button><div className="section-kicker"><Bell size={16}/> بوابة العضو</div><h2>الإشعارات والأنشطة والتقويم</h2><div className="member-portal-tabs"><b>الإشعارات</b><span>أنشطتي</span><span>المتاح للتسجيل</span><span>التقويم</span></div><h3>الإشعارات</h3><div className="notice-list">{memberNotifications.length ? memberNotifications.map(n=><article className="notice-card" key={n.id}><b>{n.title}</b><p>{n.body}</p><small>{n.created_at?new Date(n.created_at).toLocaleString('ar-EG'):''}</small></article>) : <p className="empty">لا توجد إشعارات حاليًا.</p>}</div><h3>أنشطتي</h3>{memberActivities.length ? memberActivities.map((a,i)=><article className="notice-card" key={a.id||i}><b>{a.title}</b><p>{a.description || ''}</p><p>{a.starts_at?new Date(a.starts_at).toLocaleString('ar-EG'):'الموعد لم يحدد'} · {a.location||'المكان لم يحدد'}</p><small>حالة التسجيل: {({pending:'طلب قيد المراجعة',approved:'تمت الموافقة',registered:'مسجل',rejected:'مرفوض',attended:'حضر',absent:'لم يحضر'})[a.participation_status] || a.participation_status || 'مسجل'}</small></article>) : <p className="empty">لا توجد أنشطة مرتبطة بحسابك حتى الآن.</p>}<h3>الأنشطة المتاحة للتسجيل</h3>{availableActivities.filter(a=>!memberActivities.some(m=>m.id===a.id)).length ? availableActivities.filter(a=>!memberActivities.some(m=>m.id===a.id)).map(a=><article className="notice-card" key={a.id}><b>{a.title}</b><p>{a.description || ''}</p><p>{a.starts_at?new Date(a.starts_at).toLocaleString('ar-EG'):'الموعد لم يحدد'} · {a.location||'المكان لم يحدد'}</p><button className="primary" onClick={()=>applyForActivity(a.id)}>التقديم على النشاط</button></article>) : <p className="empty">لا توجد أنشطة مفتوحة جديدة حاليًا.</p>}<h3>التقويم</h3>{memberActivities.filter(a=>a.starts_at).sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at)).length ? memberActivities.filter(a=>a.starts_at).sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at)).map(a=><article className="notice-card" key={'cal-'+a.id}><b>{new Date(a.starts_at).toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</b><p>{new Date(a.starts_at).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})} · {a.title} · {a.location||'المكان لم يحدد'}</p></article>) : <p className="empty">لا توجد مواعيد أنشطة مؤكدة في التقويم بعد.</p>}</section></div>}
+    {memberInfo && <div className="modal-backdrop" onClick={() => setMemberInfo(null)}><section className="modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setMemberInfo(null)} aria-label="إغلاق"><X/></button><div className="section-kicker">حساب العضو</div><h2>أهلًا {memberInfo.full_name}</h2><p className="modal-intro">بيانات العضوية المعتمدة</p><div className="member-profile"><p><b>الرقم الجامعي:</b> {memberInfo.student_id}</p><p><b>الكلية:</b> {memberInfo.faculty}</p><p><b>الفرقة:</b> {memberInfo.study_year}</p><p><b>حالة العضوية:</b> معتمدة</p></div><button className="primary" onClick={async()=>{await supabase.auth.signOut();setMemberInfo(null);setNotice('تم تسجيل الخروج.')}}>تسجيل الخروج</button></section></div>}
 
     {adminOpen && <div className="modal-backdrop" onClick={() => setAdminOpen(false)}><section className="modal admin-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setAdminOpen(false)} aria-label="إغلاق"><X/></button><div className="section-kicker">مساحة المسؤول</div><h2>تسجيل دخول الإدارة</h2>{session && !isAdmin ? <p>تم تسجيل الدخول، لكن الحساب ليس لديه صلاحية مسؤول. يجب منح الصلاحية من Supabase.</p> : <form onSubmit={signIn} className="form-grid one-col"><label>البريد الإلكتروني<input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="username"/></label><label>كلمة المرور<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary" disabled={busy}>{busy ? 'جارٍ الدخول...' : 'تسجيل الدخول'}</button></form>}{!isSupabaseConfigured && <p className="form-warning">اربط Supabase أولًا؛ لن تعمل المصادقة قبل الإعداد.</p>}</section></div>}
 
     {isAdmin && <div className="admin-panel"><div className="admin-panel-head"><div><span className="section-kicker">مساحة الإدارة</span><h2>لوحة تحكم جوالة الريادة</h2><p>إدارة المحتوى والأعضاء والأنشطة من مكان واحد</p></div><button className="logout" onClick={signOut}><LogOut size={16}/> خروج</button></div>
-      <div className="admin-tabs">{[['requests','طلبات الانضمام',ClipboardList],['activity-requests','طلبات الأعضاء للأنشطة',CheckCircle2],['activities','الأنشطة',CalendarDays],['gallery','معرض الصور',Images],['news','الأخبار',Newspaper],['notifications','الإشعارات',Bell],['members','الأعضاء',Users]].map(([id,label,Icon])=><button key={id} className={adminTab===id?'active':''} onClick={()=>setAdminTab(id)}><Icon size={16}/>{label}</button>)}</div>
+      <div className="admin-tabs">{[['requests','طلبات الانضمام',ClipboardList],['activities','الأنشطة',CalendarDays],['gallery','معرض الصور',Images],['news','الأخبار',Newspaper],['notifications','الإشعارات',Bell],['members','الأعضاء',Users]].map(([id,label,Icon])=><button key={id} className={adminTab===id?'active':''} onClick={()=>setAdminTab(id)}><Icon size={16}/>{label}</button>)}</div>
       <div className="admin-toolbar"><span className="admin-hint">تظهر التغييرات بعد حفظها في قاعدة البيانات.</span><button className="refresh" onClick={()=>{loadRequests();loadAdminData()}}><RefreshCw size={15}/> تحديث البيانات</button></div>
       {adminTab==='requests' && <><div className="filters">{[['pending','قيد المراجعة'],['accepted','مقبول'],['rejected','مرفوض'],['all','الكل']].map(([v,t])=><button key={v} className={filter===v?'active':''} onClick={()=>setFilter(v)}>{t}</button>)}</div><div className="request-list">{shownRequests.length===0?<p className="empty">لا توجد طلبات في هذا التصنيف.</p>:shownRequests.map(r=><article className="request" key={r.id}><div className="request-main"><b>{r.full_name}</b><span>{r.faculty} · الفرقة {r.study_year}</span><small>{r.email} · {r.phone} · رقم جامعي: {r.student_id}</small>{r.motivation&&<p>{r.motivation}</p>}<small>{new Date(r.created_at).toLocaleString('ar-EG')}</small></div><div className="request-actions"><button onClick={()=>updateStatus(r.id,'accepted')}><CheckCircle2 size={17}/> قبول</button><button onClick={()=>updateStatus(r.id,'pending')}><Clock3 size={17}/> مراجعة</button><button onClick={()=>updateStatus(r.id,'rejected')}><XCircle size={17}/> رفض</button></div></article>)}</div></>}
-      {adminTab==='activity-requests' && <div className="admin-records"><h3>طلبات الأعضاء للأنشطة</h3>{activityRequests.filter(r=>r.status==='pending' && r.join_requests).length ? activityRequests.filter(r=>r.status==='pending' && r.join_requests).map(r=><article className="admin-record" key={r.id}><div><b>{r.join_requests.full_name}</b><small>{r.join_requests.email} · الرقم الجامعي: {r.join_requests.student_id}</small><span>النشاط: {r.activities?.title || 'نشاط' } · {r.activities?.starts_at ? new Date(r.activities.starts_at).toLocaleString('ar-EG') : 'الموعد لم يحدد'}</span></div><button onClick={()=>decideActivityRequest(r.id,'approved',r)}><CheckCircle2 size={16}/> قبول</button><button onClick={()=>decideActivityRequest(r.id,'rejected',r)}><XCircle size={16}/> رفض</button></article>) : <p className="empty">لا توجد طلبات نشاط قيد المراجعة.</p>}</div>}
-      {adminTab==='activities' && <div className="admin-content-grid"><form className="admin-form" onSubmit={saveActivity}><h3>{editingActivity?'تعديل النشاط':'إضافة نشاط جديد'}</h3><label>اسم النشاط<input required maxLength="160" value={activityForm.title} onChange={e=>setActivityForm({...activityForm,title:e.target.value})}/></label><label>الوصف<textarea rows="3" value={activityForm.description} onChange={e=>setActivityForm({...activityForm,description:e.target.value})}/></label><label>المكان<input value={activityForm.location} onChange={e=>setActivityForm({...activityForm,location:e.target.value})}/></label><label>موعد النشاط<input type="datetime-local" value={activityForm.starts_at} onChange={e=>setActivityForm({...activityForm,starts_at:e.target.value})}/></label><label>الحالة<select value={activityForm.status} onChange={e=>setActivityForm({...activityForm,status:e.target.value})}><option value="open">التسجيل مفتوح</option><option value="closed">مغلق</option><option value="completed">منتهي</option></select></label><button className="primary" disabled={busy}><Save size={16}/>{busy?'جارٍ الحفظ...':'حفظ النشاط'}</button>{editingActivity&&<button type="button" className="secondary-admin" onClick={()=>{setEditingActivity(null);setActivityForm({title:'',description:'',location:'',starts_at:'',status:'open'})}}>إلغاء التعديل</button>}</form><div className="admin-records"><h3>الأنشطة ({activities.length})</h3>{activities.length===0?<p className="empty">لا توجد أنشطة بعد.</p>:activities.map(a=><article className="admin-record" key={a.id}><div><b>{a.title}</b><small>{a.location||'لم يحدد المكان'} · {a.starts_at?new Date(a.starts_at).toLocaleString('ar-EG'):'لم يحدد الموعد'}</small><span>{a.status==='open'?'التسجيل مفتوح':a.status==='closed'?'التسجيل مغلق':'منتهي'}</span></div><label className="assign-member">إضافة عضو<select value={adminParticipants[a.id]||''} onChange={e=>setAdminParticipants({...adminParticipants,[a.id]:e.target.value})}><option value="">اختيار عضو...</option>{members.map(m=><option key={m.id} value={m.id}>{m.full_name} · {m.student_id}</option>)}</select></label><button title="إضافة العضو للنشاط" onClick={()=>assignMember(a.id,adminParticipants[a.id])}><UserCheck size={16}/> إضافة</button><button title="تعديل" onClick={()=>{setEditingActivity(a.id);setActivityForm({title:a.title||'',description:a.description||'',location:a.location||'',starts_at:a.starts_at?a.starts_at.slice(0,16):'',status:a.status||'open'})}}><Pencil size={16}/></button><button title="حذف" onClick={()=>deleteRow('activities',a.id,'النشاط')}><Trash2 size={16}/></button></article>)}</div></div>}
+      {adminTab==='activities' && <div className="admin-content-grid"><form className="admin-form" onSubmit={saveActivity}><h3>{editingActivity?'تعديل النشاط':'إضافة نشاط جديد'}</h3><label>اسم النشاط<input required maxLength="160" value={activityForm.title} onChange={e=>setActivityForm({...activityForm,title:e.target.value})}/></label><label>الوصف<textarea rows="3" value={activityForm.description} onChange={e=>setActivityForm({...activityForm,description:e.target.value})}/></label><label>المكان<input value={activityForm.location} onChange={e=>setActivityForm({...activityForm,location:e.target.value})}/></label><label>موعد النشاط<input type="datetime-local" value={activityForm.starts_at} onChange={e=>setActivityForm({...activityForm,starts_at:e.target.value})}/></label><label>الحالة<select value={activityForm.status} onChange={e=>setActivityForm({...activityForm,status:e.target.value})}><option value="open">التسجيل مفتوح</option><option value="closed">مغلق</option><option value="completed">منتهي</option></select></label><button className="primary" disabled={busy}><Save size={16}/>{busy?'جارٍ الحفظ...':'حفظ النشاط'}</button>{editingActivity&&<button type="button" className="secondary-admin" onClick={()=>{setEditingActivity(null);setActivityForm({title:'',description:'',location:'',starts_at:'',status:'open'})}}>إلغاء التعديل</button>}</form><div className="admin-records"><h3>الأنشطة ({activities.length})</h3>{activities.length===0?<p className="empty">لا توجد أنشطة بعد.</p>:activities.map(a=><article className="admin-record" key={a.id}><div><b>{a.title}</b><small>{a.location||'لم يحدد المكان'} · {a.starts_at?new Date(a.starts_at).toLocaleString('ar-EG'):'لم يحدد الموعد'}</small><span>{a.status==='open'?'التسجيل مفتوح':a.status==='closed'?'التسجيل مغلق':'منتهي'}</span></div><button title="تعديل" onClick={()=>{setEditingActivity(a.id);setActivityForm({title:a.title||'',description:a.description||'',location:a.location||'',starts_at:a.starts_at?a.starts_at.slice(0,16):'',status:a.status||'open'})}}><Pencil size={16}/></button><button title="حذف" onClick={()=>deleteRow('activities',a.id,'النشاط')}><Trash2 size={16}/></button></article>)}</div></div>}
       {adminTab==='gallery' && <div className="admin-content-grid"><form className="admin-form" onSubmit={uploadAlbum}><h3>رفع صورة إلى المعرض</h3><label>عنوان الصورة أو الألبوم<input required maxLength="160" value={albumForm.title} onChange={e=>setAlbumForm({...albumForm,title:e.target.value})}/></label><label>وصف مختصر<textarea rows="3" value={albumForm.description} onChange={e=>setAlbumForm({...albumForm,description:e.target.value})}/></label><label>الصورة (JPG / PNG / WEBP)<input type="file" accept="image/jpeg,image/png,image/webp" required/></label><small>حد أقصى 8 ميجابايت. لا ترفع صور طلاب قبل الحصول على الموافقات المطلوبة.</small><button className="primary" disabled={uploading}><Upload size={16}/>{uploading?'جارٍ الرفع...':'رفع ونشر الصورة'}</button></form><div className="admin-records"><h3>الصور المنشورة ({albums.length})</h3><div className="admin-album-grid">{albums.map(a=><article className="admin-album" key={a.id}><img src={a.image_url} alt={a.title}/><b>{a.title}</b><small>{a.description}</small><button onClick={()=>deleteRow('photo_albums',a.id,'الصورة من المعرض')}><Trash2 size={15}/> حذف</button></article>)}</div>{albums.length===0&&<p className="empty">لا توجد صور منشورة.</p>}</div></div>}
       {adminTab==='news' && <div className="admin-content-grid"><form className="admin-form" onSubmit={saveNews}><h3>{editingNews?'تعديل الخبر':'نشر خبر أو إعلان'}</h3><label>العنوان<input required maxLength="180" value={newsForm.title} onChange={e=>setNewsForm({...newsForm,title:e.target.value})}/></label><label>نص الخبر<textarea required rows="5" value={newsForm.body} onChange={e=>setNewsForm({...newsForm,body:e.target.value})}/></label><label className="inline-check"><input type="checkbox" checked={newsForm.published} onChange={e=>setNewsForm({...newsForm,published:e.target.checked})}/> نشر الخبر فورًا</label><button className="primary" disabled={busy}><Save size={16}/>حفظ الخبر</button></form><div className="admin-records"><h3>الأخبار ({news.length})</h3>{news.map(n=><article className="admin-record" key={n.id}><div><b>{n.title}</b><small>{(n.body||'').slice(0,130)}</small><span>{n.published?'منشور':'مسودة'}</span></div><button onClick={()=>{setEditingNews(n.id);setNewsForm({title:n.title||'',body:n.body||'',published:!!n.published})}}><Pencil size={16}/></button><button onClick={()=>deleteRow('site_news',n.id,'الخبر')}><Trash2 size={16}/></button></article>)}</div></div>}
-      {adminTab==='notifications' && <div className="admin-content-grid"><form className="admin-form" onSubmit={saveNotification}><h3>نشر إشعار للأعضاء</h3><label>عنوان الإشعار<input required maxLength="160" value={notificationForm.title} onChange={e=>setNotificationForm({...notificationForm,title:e.target.value})}/></label><label>نص الإشعار<textarea required rows="4" value={notificationForm.body} onChange={e=>setNotificationForm({...notificationForm,body:e.target.value})}/></label><label>جهة الإرسال<select value={notificationForm.target} onChange={e=>setNotificationForm({...notificationForm,target:e.target.value})}><option value="all">كل الأعضاء</option><option value="individual">عضو محدد بالبريد</option></select></label>{notificationForm.target==='individual' && <label>بريد العضو<input type="email" required value={notificationForm.target_email} onChange={e=>setNotificationForm({...notificationForm,target_email:e.target.value})} placeholder="member@example.com"/></label>}<button className="primary" disabled={busy}><Bell size={16}/>نشر الإشعار</button><small>هذه النسخة تحفظ الإشعارات داخل الموقع. إشعارات البريد أو الهاتف تحتاج إعداد خدمة إضافية.</small></form><div className="admin-records"><h3>الإشعارات ({notifications.length})</h3>{notifications.map(n=><article className="admin-record" key={n.id}><div><b>{n.title}</b><small>{n.body}</small></div><button onClick={()=>deleteRow('site_notifications',n.id,'الإشعار')}><Trash2 size={16}/></button></article>)}</div></div>}
-      {adminTab==='members' && <div className="admin-records"><h3>كل الأعضاء ({members.length})</h3><input className="member-search" value={memberSearch} onChange={e=>setMemberSearch(e.target.value)} placeholder="ابحث بالاسم أو البريد أو الرقم الجامعي..."/><p className="admin-hint">بيانات الأعضاء وحالة العضوية والأنشطة المرتبطة بكل عضو.</p>{members.filter(m=>`${m.full_name} ${m.email} ${m.student_id}`.toLowerCase().includes(memberSearch.toLowerCase())).map(m=><article className="admin-record" key={m.id}><div><b>{m.full_name}</b><small>الرقم الجامعي: {m.student_id} · {m.faculty} · الفرقة {m.study_year} · {m.email}</small><span>{m.status==='accepted'?'عضوية معتمدة':m.status==='rejected'?'عضوية مرفوضة':'قيد المراجعة'}</span></div><button onClick={()=>{setNotificationForm({...notificationForm,target:'individual',target_email:m.email,title:'',body:''});setAdminTab('notifications')}}><Send size={16}/> إرسال رسالة</button><button onClick={()=>{if(window.confirm('إلغاء اعتماد هذا الطلب؟')) updateStatus(m.id,'rejected')}}><UserCheck size={16}/> إلغاء</button></article>)}</div>}
+      {adminTab==='notifications' && <div className="admin-content-grid"><form className="admin-form" onSubmit={saveNotification}><h3>نشر إشعار للأعضاء</h3><label>عنوان الإشعار<input required maxLength="160" value={notificationForm.title} onChange={e=>setNotificationForm({...notificationForm,title:e.target.value})}/></label><label>نص الإشعار<textarea required rows="4" value={notificationForm.body} onChange={e=>setNotificationForm({...notificationForm,body:e.target.value})}/></label><button className="primary" disabled={busy}><Bell size={16}/>نشر الإشعار</button><small>هذه النسخة تحفظ الإشعارات داخل الموقع. إشعارات البريد أو الهاتف تحتاج إعداد خدمة إضافية.</small></form><div className="admin-records"><h3>الإشعارات ({notifications.length})</h3>{notifications.map(n=><article className="admin-record" key={n.id}><div><b>{n.title}</b><small>{n.body}</small></div><button onClick={()=>deleteRow('site_notifications',n.id,'الإشعار')}><Trash2 size={16}/></button></article>)}</div></div>}
+      {adminTab==='members' && <div className="admin-records"><h3>الأعضاء المعتمدون ({members.length})</h3><p className="admin-hint">إزالة العضو تغيّر حالة عضويته إلى مرفوض، وتمنعه من دخول بوابة الأعضاء. لا يُحذف حساب Auth تلقائيًا.</p>{members.map(m=><article className="admin-record" key={m.id}><div><b>{m.full_name}</b><small>الرقم الجامعي: {m.student_id} · {m.faculty} · {m.email}</small><span>عضوية معتمدة</span></div><button className="danger-admin" onClick={()=>{if(window.confirm(`إزالة العضو ${m.full_name}؟ لن يتمكن من دخول بوابة الأعضاء.`)) updateStatus(m.id,'rejected')}}><Trash2 size={16}/> إزالة عضو</button></article>)}</div>}
     </div>}
   </div>
 }
