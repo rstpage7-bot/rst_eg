@@ -66,3 +66,38 @@ using (
       and lower(trim(jr.email)) = lower(coalesce(auth.jwt()->>'email',''))
   )
 );
+
+-- طلبات التسجيل في الأنشطة: العضو يرسل طلبًا pending، والإدارة وحدها تقرر.
+drop policy if exists "Members request open activities" on public.activity_participants;
+create policy "Members request open activities"
+on public.activity_participants for insert to authenticated
+with check (
+  status = 'pending'
+  and exists (
+    select 1 from public.join_requests jr
+    where jr.id = activity_participants.join_request_id
+      and lower(trim(jr.email)) = lower(coalesce(auth.jwt()->>'email',''))
+      and jr.status = 'accepted'
+  )
+  and exists (
+    select 1 from public.activities a
+    where a.id = activity_participants.activity_id and a.status = 'open'
+  )
+);
+
+drop policy if exists "Members read own activity participation" on public.activity_participants;
+create policy "Members read own activity participation"
+on public.activity_participants for select to authenticated
+using (
+  public.is_site_admin()
+  or exists (
+    select 1 from public.join_requests jr
+    where jr.id = activity_participants.join_request_id
+      and lower(trim(jr.email)) = lower(coalesce(auth.jwt()->>'email',''))
+  )
+);
+
+-- قبول/رفض طلب النشاط والتعيين المباشر للأعضاء يظلان من صلاحية الإدارة فقط.
+drop policy if exists "Admins manage participants" on public.activity_participants;
+create policy "Admins manage participants" on public.activity_participants for all to authenticated
+using (public.is_site_admin()) with check (public.is_site_admin());

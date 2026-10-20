@@ -52,3 +52,9 @@ body,.site{background:#e9e7e1;color:#17253b}
 .member-search{width:100%;padding:12px 14px;border:1px solid #cbd0d8;border-radius:7px;background:#f8f7f3;color:#17253b;margin:10px 0 16px;font:inherit}
 .admin-record>button{white-space:nowrap}
 @media(max-width:650px){.member-notices-modal{width:calc(100vw - 24px);padding:22px 16px}.admin-record{flex-wrap:wrap}.admin-record>div{min-width:100%}}
+.member-portal-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 18px;padding-bottom:12px;border-bottom:1px solid #e2e8f0;color:#17345b;font-size:13px}.member-portal-tabs>*{padding:7px 10px;border-radius:8px;background:#f1f5f9}.member-portal-tabs>b{background:#17345b;color:#fff}.assign-member{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#64748b;min-width:150px}.assign-member select{max-width:190px;padding:7px;border:1px solid #cbd5e1;border-radius:8px;background:white;color:#17345b;font:inherit}.notice-card .primary{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;background:#17345b;color:#fff;padding:9px 13px;font:inherit;cursor:pointer;margin-top:7px}.member-notices-modal h3{margin-top:22px;color:#17345b}
+
+
+/* Member portal return button */
+.member-back-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 16px auto; padding: 10px 14px; border: 1px solid var(--line, #d8dce5); border-radius: 10px; background: transparent; color: var(--text, #17304f); font: inherit; font-weight: 700; cursor: pointer; }
+.member-back-button:hover { background: rgba(190, 151, 54, .12); }
