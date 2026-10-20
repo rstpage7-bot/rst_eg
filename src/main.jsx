@@ -133,10 +133,24 @@ function App() {
     setBusy(true)
     const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password })
     if (error) { setBusy(false); setNotice('البريد الإلكتروني أو كلمة المرور غير صحيحة، أو لم يتم تأكيد البريد الإلكتروني.'); return }
-    const { data: approved, error: approvalError } = await supabase.from('join_requests').select('full_name,student_id,faculty,study_year,status,email').eq('email', loginEmail).eq('status','accepted').maybeSingle()
+    // تسجيل الدخول يعتمد على صحة بيانات Supabase Auth فقط؛ بيانات طلب العضوية اختيارية للعرض.
+    // لو الطلب غير موجود أو قراءة الجدول ممنوعة بسياسات RLS، لا نرفض تسجيل الدخول.
+    const { data: memberRequest } = await supabase.from('join_requests')
+      .select('full_name,student_id,faculty,study_year,status,email')
+      .eq('email', loginEmail)
+      .maybeSingle()
     setBusy(false)
-    if (approvalError || !approved) { await supabase.auth.signOut(); setNotice('الحساب غير معتمد حتى الآن، أو لا يوجد طلب عضوية مقبول مرتبط بهذا البريد.'); return }
-    setMemberInfo(approved); setMemberOpen(false); setNotice('تم تسجيل دخول العضو بنجاح.')
+    const fallbackName = loginEmail.split('@')[0] || 'عضو جوالة'
+    setMemberInfo(memberRequest || {
+      full_name: fallbackName,
+      student_id: 'غير مسجل',
+      faculty: 'غير محدد',
+      study_year: 'غير محدد',
+      status: 'account',
+      email: loginEmail
+    })
+    setMemberOpen(false)
+    setNotice('تم تسجيل الدخول بنجاح. بيانات العضوية التفصيلية تظهر عند توفر طلب مرتبط بالبريد.')
   }
 
   async function forgotMemberPassword() {
@@ -298,7 +312,7 @@ function App() {
 
     {memberOpen && <div className="modal-backdrop" onClick={() => setMemberOpen(false)}><section className="modal admin-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setMemberOpen(false)} aria-label="إغلاق"><X/></button><div className="section-kicker">بوابة الأعضاء</div><h2>تسجيل دخول الأعضاء</h2><p className="modal-intro">استخدم البريد الإلكتروني وكلمة المرور. يجب أن تكون عضويتك معتمدة وحساب الدخول منشأً في Supabase Auth.</p><form onSubmit={memberSignIn} className="form-grid one-col"><label>البريد الإلكتروني<input type="email" value={memberEmail} onChange={e => setMemberEmail(e.target.value)} required autoComplete="username"/></label><label>كلمة المرور<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary" disabled={busy}>{busy ? 'جارٍ التحقق...' : 'دخول الأعضاء'}</button></form><button type="button" className="text-button" onClick={forgotMemberPassword} disabled={busy}>هل نسيت كلمة المرور؟</button>{!isSupabaseConfigured && <p className="form-warning">يلزم إعداد Supabase لتفعيل تسجيل الدخول.</p>}</section></div>}
 
-    {memberInfo && <div className="modal-backdrop" onClick={() => setMemberInfo(null)}><section className="modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setMemberInfo(null)} aria-label="إغلاق"><X/></button><div className="section-kicker">حساب العضو</div><h2>أهلًا {memberInfo.full_name}</h2><p className="modal-intro">بيانات العضوية المعتمدة</p><div className="member-profile"><p><b>الرقم الجامعي:</b> {memberInfo.student_id}</p><p><b>الكلية:</b> {memberInfo.faculty}</p><p><b>الفرقة:</b> {memberInfo.study_year}</p><p><b>حالة العضوية:</b> معتمدة</p></div><button className="primary" onClick={async()=>{await supabase.auth.signOut();setMemberInfo(null);setNotice('تم تسجيل الخروج.')}}>تسجيل الخروج</button></section></div>}
+    {memberInfo && <div className="modal-backdrop" onClick={() => setMemberInfo(null)}><section className="modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setMemberInfo(null)} aria-label="إغلاق"><X/></button><div className="section-kicker">حساب العضو</div><h2>أهلًا {memberInfo.full_name}</h2><p className="modal-intro">بيانات الحساب</p><div className="member-profile"><p><b>الرقم الجامعي:</b> {memberInfo.student_id}</p><p><b>الكلية:</b> {memberInfo.faculty}</p><p><b>الفرقة:</b> {memberInfo.study_year}</p><p><b>حالة العضوية:</b> {memberInfo.status === 'accepted' ? 'معتمدة' : memberInfo.status === 'account' ? 'حساب مسجل، بيانات العضوية غير مرتبطة بعد' : memberInfo.status}</p></div><button className="primary" onClick={async()=>{await supabase.auth.signOut();setMemberInfo(null);setNotice('تم تسجيل الخروج.')}}>تسجيل الخروج</button></section></div>}
 
     {adminOpen && <div className="modal-backdrop" onClick={() => setAdminOpen(false)}><section className="modal admin-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setAdminOpen(false)} aria-label="إغلاق"><X/></button><div className="section-kicker">مساحة المسؤول</div><h2>تسجيل دخول الإدارة</h2>{session && !isAdmin ? <p>تم تسجيل الدخول، لكن الحساب ليس لديه صلاحية مسؤول. يجب منح الصلاحية من Supabase.</p> : <form onSubmit={signIn} className="form-grid one-col"><label>البريد الإلكتروني<input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="username"/></label><label>كلمة المرور<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary" disabled={busy}>{busy ? 'جارٍ الدخول...' : 'تسجيل الدخول'}</button></form>}{!isSupabaseConfigured && <p className="form-warning">اربط Supabase أولًا؛ لن تعمل المصادقة قبل الإعداد.</p>}</section></div>}
 
