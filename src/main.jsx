@@ -188,7 +188,7 @@ function App() {
           <h1>معًا نصنع قادة<br/><span>يصنعون المستقبل</span></h1>
           <p>جوالة جامعة الريادة مساحة للتطوع، والتعلّم، والعمل الجماعي، وخدمة المجتمع بروح كشفية واحدة.</p>
           <div className="hero-actions"><button className="primary" onClick={() => setJoinOpen(true)}>ابدأ رحلتك معنا <ArrowUpLeft size={18}/></button><a className="secondary" href="#about">اكتشف الجوالة <ArrowUpLeft size={18}/></a></div>
-          <div className="hero-note"><ShieldCheck size={17}/> الموقع التعريفي لجوالة الجامعة</div>
+          <div className="hero-note"><ShieldCheck size={17}/> الموقع التعريفي لجوالة الجامعة</div><div className="team-identity"><span>MMTEAM</span><b>صيدلة</b><small>فريق الصيدلة</small></div>
         </div>
         <div className="hero-visual">
           <div className="hero-image"><img src={photos[0].src} alt="صورة من الموقع الرسمي لجامعة الريادة" onError={e => e.currentTarget.style.display='none'}/><div className="image-overlay"></div><div className="image-label"><span>RST</span><div><b>جوالة الريادة</b><small>معًا لخدمة المجتمع</small></div></div></div>
@@ -228,7 +228,7 @@ function App() {
       <section className="join-banner"><div><div className="section-kicker">مكانك بيننا</div><h2>خطوتك الأولى تبدأ هنا.</h2><p>قدّم طلب الانضمام، وسيتم مراجعته من مسؤول الجوالة.</p></div><button className="primary" onClick={() => setJoinOpen(true)}>طلب انضمام <ArrowUpLeft size={18}/></button></section>
     </main>
 
-    <footer className="footer"><div className="footer-brand"><span className="brand-mark">RST</span><div><b>جوالة الريادة</b><small>جامعة الريادة للعلوم والتكنولوجيا</small></div></div><p>موقع تعريفي مستقل قيد التطوير، ولا يمثل قناة رسمية للجامعة إلا بعد اعتماد الإدارة.</p><div className="footer-links"><a href="https://rst.edu.eg/?lang=ar" target="_blank" rel="noreferrer">الموقع الرسمي</a><button onClick={() => setAdminOpen(true)}>دخول المسؤول</button></div><small className="copyright">© {new Date().getFullYear()} جوالة الريادة · نسخة أولية للمراجعة</small></footer>
+    <footer className="footer"><div className="footer-brand"><span className="brand-mark">RST</span><div><b>جوالة الريادة</b><small>جامعة الريادة للعلوم والتكنولوجيا</small><small className="team-footer">MMTEAM · صيدلة</small></div></div><p>موقع تعريفي مستقل قيد التطوير، ولا يمثل قناة رسمية للجامعة إلا بعد اعتماد الإدارة.</p><div className="footer-links"><a href="https://rst.edu.eg/?lang=ar" target="_blank" rel="noreferrer">الموقع الرسمي</a><button onClick={() => setAdminOpen(true)}>دخول المسؤول</button></div><small className="copyright">© {new Date().getFullYear()} جوالة الريادة · MMTEAM صيدلة · نسخة للتقديم والمراجعة</small></footer>
 
     {notice && <div className="toast" role="status"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="إغلاق">×</button></div>}
 
