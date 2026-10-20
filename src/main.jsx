@@ -16,6 +16,9 @@ function App() {
   const [mobileMenu, setMobileMenu] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
   const [adminOpen, setAdminOpen] = useState(false)
+  const [memberOpen, setMemberOpen] = useState(false)
+  const [memberInfo, setMemberInfo] = useState(null)
+  const [adminFooterClicks, setAdminFooterClicks] = useState(0)
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [session, setSession] = useState(null)
@@ -99,6 +102,18 @@ function App() {
     else { setNotice('تم استلام طلبك بنجاح. سيظهر لمسؤول الجوالة للمراجعة.'); e.currentTarget.reset(); setJoinOpen(false) }
   }
 
+  async function memberSignIn(e) {
+    e.preventDefault()
+    if (!supabase) { setNotice('اربط Supabase أولًا من إعدادات المشروع.'); return }
+    setBusy(true)
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) { setBusy(false); setNotice('تعذر الدخول. تأكد من البريد وكلمة المرور وأن حسابك أُنشئ في Supabase Auth.'); return }
+    const { data: approved, error: approvalError } = await supabase.from('join_requests').select('full_name,student_id,faculty,study_year,status').eq('email', email.trim()).eq('status','accepted').maybeSingle()
+    setBusy(false)
+    if (approvalError || !approved) { await supabase.auth.signOut(); setNotice('الحساب غير معتمد كعضو حتى الآن، أو لم يتم ربط طلبك المقبول بنفس البريد الإلكتروني.'); return }
+    setMemberInfo(approved); setMemberOpen(false); setNotice('تم تسجيل دخول العضو بنجاح.')
+  }
+
   async function signIn(e) {
     e.preventDefault()
     if (!supabase) { setNotice('اربط Supabase أولًا باستخدام ملف .env.local.'); return }
@@ -177,7 +192,7 @@ function App() {
       <button className="menu-button" aria-label="فتح القائمة" onClick={() => setMobileMenu(!mobileMenu)}>{mobileMenu ? <X/> : <Menu/>}</button>
       <nav className={mobileMenu ? 'nav nav-open' : 'nav'}>
         <a href="#about" onClick={() => setMobileMenu(false)}>عن الجوالة</a><a href="#values" onClick={() => setMobileMenu(false)}>قيمنا</a><a href="#activities" onClick={() => setMobileMenu(false)}>الأنشطة</a><a href="#gallery" onClick={() => setMobileMenu(false)}>معرض الصور</a>
-        <button className="nav-join" onClick={() => {setJoinOpen(true);setMobileMenu(false)}}>انضم للجوالة <ArrowUpLeft size={16}/></button>
+        <button className="nav-member" onClick={() => {setMemberOpen(true);setMobileMenu(false)}}>دخول الأعضاء</button><button className="nav-join" onClick={() => {setJoinOpen(true);setMobileMenu(false)}}>انضم للجوالة <ArrowUpLeft size={16}/></button>
       </nav>
     </header>
 
@@ -228,7 +243,7 @@ function App() {
       <section className="join-banner"><div><div className="section-kicker">مكانك بيننا</div><h2>خطوتك الأولى تبدأ هنا.</h2><p>قدّم طلب الانضمام، وسيتم مراجعته من مسؤول الجوالة.</p></div><button className="primary" onClick={() => setJoinOpen(true)}>طلب انضمام <ArrowUpLeft size={18}/></button></section>
     </main>
 
-    <footer className="footer"><div className="footer-brand"><span className="brand-mark">RST</span><div><b>جوالة الريادة</b><small>جامعة الريادة للعلوم والتكنولوجيا</small><small className="team-footer">MMTEAM · صيدلة</small></div></div><p>موقع تعريفي مستقل قيد التطوير، ولا يمثل قناة رسمية للجامعة إلا بعد اعتماد الإدارة.</p><div className="footer-links"><a href="https://rst.edu.eg/?lang=ar" target="_blank" rel="noreferrer">الموقع الرسمي</a><button onClick={() => setAdminOpen(true)}>دخول المسؤول</button></div><small className="copyright">© {new Date().getFullYear()} جوالة الريادة · MMTEAM صيدلة · نسخة للتقديم والمراجعة</small></footer>
+    <footer className="footer"><div className="footer-brand"><span className="brand-mark">RST</span><div><b>جوالة الريادة</b><small>جامعة الريادة للعلوم والتكنولوجيا</small><small className="team-footer">MMTEAM · صيدلة</small></div></div><p>موقع تعريفي مستقل، ولا يمثل قناة رسمية للجامعة إلا بعد اعتماد الإدارة.</p><div className="footer-links"><a href="https://rst.edu.eg/?lang=ar" target="_blank" rel="noreferrer">الموقع الرسمي</a></div><small className="copyright">© {new Date().getFullYear()} جوالة الريادة · MMTEAM صيدلة</small><button type="button" className="programmed-by" aria-label="Programmed by MMTEAM" onClick={() => { const next = adminFooterClicks + 1; setAdminFooterClicks(next); if (next >= 4) { setAdminFooterClicks(0); setAdminOpen(true); } else { window.clearTimeout(window.__mmteamFooterClickTimer); window.__mmteamFooterClickTimer = window.setTimeout(() => setAdminFooterClicks(0), 1800); } }}>Programmed by MMTEAM</button></footer>
 
     {notice && <div className="toast" role="status"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="إغلاق">×</button></div>}
 
@@ -243,6 +258,10 @@ function App() {
       <button className="primary full-field" disabled={busy} type="submit"><Send size={17}/>{busy ? 'جارٍ الإرسال...' : 'إرسال طلب الانضمام'}</button>
       {!isSupabaseConfigured && <p className="form-warning full-field">تنبيه: يلزم ربط قاعدة بيانات Supabase قبل استقبال الطلبات فعليًا.</p>}
     </form></section></div>}
+
+    {memberOpen && <div className="modal-backdrop" onClick={() => setMemberOpen(false)}><section className="modal admin-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setMemberOpen(false)} aria-label="إغلاق"><X/></button><div className="section-kicker">بوابة الأعضاء</div><h2>تسجيل دخول الأعضاء</h2><p className="modal-intro">استخدم البريد وكلمة المرور لحساب أنشأه مسؤول النظام في Supabase Auth. قبول الطلب وحده لا ينشئ حساب دخول تلقائيًا.</p><form onSubmit={memberSignIn} className="form-grid one-col"><label>البريد الإلكتروني<input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="username"/></label><label>كلمة المرور<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary" disabled={busy}>{busy ? 'جارٍ التحقق...' : 'دخول الأعضاء'}</button></form>{!isSupabaseConfigured && <p className="form-warning">يلزم إعداد Supabase لتفعيل تسجيل الدخول.</p>}</section></div>}
+
+    {memberInfo && <div className="modal-backdrop" onClick={() => setMemberInfo(null)}><section className="modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setMemberInfo(null)} aria-label="إغلاق"><X/></button><div className="section-kicker">حساب العضو</div><h2>أهلًا {memberInfo.full_name}</h2><p className="modal-intro">بيانات العضوية المعتمدة</p><div className="member-profile"><p><b>الرقم الجامعي:</b> {memberInfo.student_id}</p><p><b>الكلية:</b> {memberInfo.faculty}</p><p><b>الفرقة:</b> {memberInfo.study_year}</p><p><b>حالة العضوية:</b> معتمدة</p></div><button className="primary" onClick={async()=>{await supabase.auth.signOut();setMemberInfo(null);setNotice('تم تسجيل الخروج.')}}>تسجيل الخروج</button></section></div>}
 
     {adminOpen && <div className="modal-backdrop" onClick={() => setAdminOpen(false)}><section className="modal admin-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setAdminOpen(false)} aria-label="إغلاق"><X/></button><div className="section-kicker">مساحة المسؤول</div><h2>تسجيل دخول الإدارة</h2>{session && !isAdmin ? <p>تم تسجيل الدخول، لكن الحساب ليس لديه صلاحية مسؤول. يجب منح الصلاحية من Supabase.</p> : <form onSubmit={signIn} className="form-grid one-col"><label>البريد الإلكتروني<input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="username"/></label><label>كلمة المرور<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary" disabled={busy}>{busy ? 'جارٍ الدخول...' : 'تسجيل الدخول'}</button></form>}{!isSupabaseConfigured && <p className="form-warning">اربط Supabase أولًا؛ لن تعمل المصادقة قبل الإعداد.</p>}</section></div>}
 
