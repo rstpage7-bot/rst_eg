@@ -20,3 +20,22 @@
 .member-profile{background:#f8f7f3;border:1px solid #e3dfd5;border-radius:8px;padding:12px 16px;margin:18px 0;color:#17345b}
 .member-profile p{margin:10px 0;color:#334155;font-size:13px}
 @media(max-width:800px){.nav-member{justify-content:center;padding:12px}}
+
+/* MMTEAM final readability and slightly darker warm-neutral page background */
+:root{--cream:#e9e7e1;--line:#d6d7d8}
+body,.site{background:#e9e7e1;color:#17253b}
+.header{background:transparent}
+.stats{background:#f2f0eb}
+.about,.gallery{background:#e9e7e1}
+.public-news{background:#deded9}
+.public-news .activity-card{background:#f7f6f2}
+.modal{background:#f0efea;color:#17253b}
+.modal-close{background:#deded8}
+.form-grid input,.form-grid textarea,.form-grid select{background:#f8f7f3;color:#10213d}
+.field-help{font-size:10px;font-weight:500;color:#667085;line-height:1.7}
+.field-error{font-size:10px;color:#b42318;font-weight:700}
+.text-button{margin-top:14px;border:0;background:transparent;color:#8b6827;text-decoration:underline;font-size:12px;font-weight:800;padding:8px 0}
+.nav-member{border:1px solid #d7ad59;background:transparent;color:#071b3b;padding:11px 14px;font-weight:800;font-size:13px;border-radius:4px}
+.nav-member:hover{background:#f3ead7}
+.programmed-by{grid-column:1/-1;justify-self:center;border:0;background:transparent;color:#d7ad59;font-weight:800;letter-spacing:.3px;padding:8px 12px}
+@media(max-width:800px){.nav-member{width:100%}.public-news{background:#deded9}}

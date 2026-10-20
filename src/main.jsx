@@ -26,6 +26,7 @@ function App() {
   const [email, setEmail] = useState('')
   const [memberStudentId, setMemberStudentId] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [requests, setRequests] = useState([])
   const [filter, setFilter] = useState('pending')
   const [adminTab, setAdminTab] = useState('requests')
@@ -89,18 +90,39 @@ function App() {
 
   async function submitJoin(e) {
     e.preventDefault()
-    if (!supabase) { setNotice('قاعدة البيانات غير مربوطة بعد. اتبع خطوات الإعداد في ملف README.'); return }
-    setBusy(true); setNotice('')
-    const form = new FormData(e.currentTarget)
+    if (!supabase) { setNotice('قاعدة البيانات غير مربوطة بعد. راجع إعدادات Supabase.'); return }
+    const formElement = e.currentTarget
+    const form = new FormData(formElement)
     const row = Object.fromEntries(form.entries())
+    const newPassword = String(row.new_password || '')
+    if (newPassword.length < 8) { setNotice('كلمة المرور لازم تكون 8 أحرف على الأقل.'); return }
+    if (newPassword !== String(row.confirm_password || '')) { setNotice('كلمتا المرور غير متطابقتين.'); return }
+    setBusy(true); setNotice('')
+    // Password is sent only to Supabase Auth; it is never written to join_requests.
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: row.email.trim().toLowerCase(), password: newPassword,
+      options: { data: { full_name: row.full_name.trim(), student_id: row.student_id.trim() } }
+    })
+    if (authError) {
+      setBusy(false)
+      setNotice(authError.message.toLowerCase().includes('already') ? 'البريد مسجل بالفعل. استخدم دخول الأعضاء أو استعادة كلمة المرور.' : 'تعذر إنشاء حساب الدخول: ' + authError.message)
+      return
+    }
     const { error } = await supabase.from('join_requests').insert([{
       full_name: row.full_name.trim(), student_id: row.student_id.trim(),
-      email: row.email.trim(), phone: row.phone.trim(), faculty: row.faculty,
+      email: row.email.trim().toLowerCase(), phone: row.phone.trim(), faculty: row.faculty,
       study_year: row.study_year, motivation: (row.motivation || '').trim(), status: 'pending'
     }])
+    if (error) {
+      // Auth account exists but no request was saved; explain next step rather than storing the password.
+      setBusy(false)
+      setNotice('تم إنشاء حساب الدخول، لكن لم يُحفظ طلب الانضمام. تواصل مع الإدارة قبل إعادة المحاولة. التفاصيل: ' + error.message)
+      return
+    }
+    if (authData?.session) await supabase.auth.signOut()
     setBusy(false)
-    if (error) setNotice('لم يتم إرسال الطلب. راجع إعداد Supabase أو حاول مرة أخرى.')
-    else { setNotice('تم استلام طلبك بنجاح. سيظهر لمسؤول الجوالة للمراجعة.'); e.currentTarget.reset(); setJoinOpen(false) }
+    setNotice('تم إنشاء حساب الدخول وإرسال طلب الانضمام للمراجعة. لن تتمكن من دخول مساحة الأعضاء إلا بعد اعتماد الطلب.')
+    formElement.reset(); setJoinOpen(false); setConfirmPassword(''); setPassword('')
   }
 
   async function memberSignIn(e) {
@@ -109,20 +131,30 @@ function App() {
     const collegeNumber = memberStudentId.trim()
     if (!collegeNumber) { setNotice('اكتب الرقم الجامعي.'); return }
     setBusy(true)
-    // Resolve the college number to the email attached to an approved membership.
-    // The database must provide a narrowly scoped, secure lookup for this flow; do not expose join_requests broadly.
-    const { data: approved, error: lookupError } = await supabase.from('join_requests')
-      .select('full_name,student_id,faculty,study_year,status,email')
-      .eq('student_id', collegeNumber).eq('status','accepted').maybeSingle()
-    if (lookupError || !approved?.email) {
+    // This RPC returns the email only for a matching approved student number.
+    const { data: emailResult, error: lookupError } = await supabase.rpc('approved_member_email_by_student_id', { p_student_id: collegeNumber })
+    if (lookupError || !emailResult) {
       setBusy(false)
-      setNotice('لم نتمكن من العثور على عضوية معتمدة بهذا الرقم. تأكد من الرقم أو راجع مسؤول الجوالة.')
+      setNotice('لم نجد عضوية معتمدة بهذا الرقم، أو لم يتم إعداد دالة تسجيل الدخول في Supabase. شغّل ملف supabase/member-login.sql.')
       return
     }
-    const { error } = await supabase.auth.signInWithPassword({ email: approved.email, password })
-    if (error) { setBusy(false); setNotice('الرقم الجامعي أو كلمة المرور غير صحيحة، أو لم يتم إنشاء حساب دخول لهذا العضو.'); return }
+    const approvedEmail = typeof emailResult === 'string' ? emailResult : emailResult.email
+    const { error } = await supabase.auth.signInWithPassword({ email: approvedEmail, password })
+    if (error) { setBusy(false); setNotice('الرقم الجامعي أو كلمة المرور غير صحيحة، أو لم يتم تأكيد البريد الإلكتروني.'); return }
+    const { data: approved } = await supabase.from('join_requests').select('full_name,student_id,faculty,study_year,status,email').eq('student_id', collegeNumber).eq('status','accepted').maybeSingle()
     setBusy(false)
+    if (!approved) { await supabase.auth.signOut(); setNotice('الحساب غير معتمد حتى الآن.'); return }
     setMemberInfo(approved); setMemberOpen(false); setNotice('تم تسجيل دخول العضو بنجاح.')
+  }
+
+  async function forgotMemberPassword() {
+    if (!supabase) { setNotice('اربط Supabase أولًا.'); return }
+    const recoveryEmail = window.prompt('اكتب البريد الإلكتروني المستخدم عند طلب الانضمام لإرسال رابط إعادة تعيين كلمة المرور:')
+    if (!recoveryEmail) return
+    setBusy(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(recoveryEmail.trim().toLowerCase(), { redirectTo: window.location.origin })
+    setBusy(false)
+    setNotice(error ? 'تعذر إرسال رابط الاستعادة. تأكد من البريد وإعدادات البريد في Supabase.' : 'لو البريد مسجل، هيوصلك رابط إعادة تعيين كلمة المرور. راجع الوارد والرسائل غير المرغوب فيها.')
   }
 
   async function signIn(e) {
@@ -262,6 +294,8 @@ function App() {
       <label>الاسم بالكامل<input name="full_name" required minLength="2" maxLength="120" autoComplete="name"/></label>
       <label>الرقم الجامعي<input name="student_id" required minLength="2" maxLength="40"/></label>
       <label>البريد الإلكتروني<input type="email" name="email" required maxLength="254" autoComplete="email"/></label>
+      <label>كلمة المرور<input type="password" name="new_password" required minLength="8" maxLength="72" autoComplete="new-password" onChange={e => setPassword(e.target.value)}/><small className="field-help">8 أحرف على الأقل. لا يستطيع الأدمن رؤية كلمة المرور.</small></label>
+      <label>تأكيد كلمة المرور<input type="password" name="confirm_password" required minLength="8" maxLength="72" autoComplete="new-password" onChange={e => setConfirmPassword(e.target.value)}/>{confirmPassword && password !== confirmPassword && <small className="field-error">كلمتا المرور غير متطابقتين.</small>}</label>
       <label>رقم الهاتف<input type="tel" name="phone" required minLength="7" maxLength="30" autoComplete="tel"/></label>
       <label>الكلية<select name="faculty" required defaultValue=""><option value="" disabled>اختر الكلية</option>{faculties.map(f => <option key={f}>{f}</option>)}</select></label>
       <label>الفرقة الدراسية<select name="study_year" required defaultValue=""><option value="" disabled>اختر الفرقة</option>{['الأولى','الثانية','الثالثة','الرابعة','الخامسة','أخرى'].map(f => <option key={f}>{f}</option>)}</select></label>
@@ -270,7 +304,7 @@ function App() {
       {!isSupabaseConfigured && <p className="form-warning full-field">تنبيه: يلزم ربط قاعدة بيانات Supabase قبل استقبال الطلبات فعليًا.</p>}
     </form></section></div>}
 
-    {memberOpen && <div className="modal-backdrop" onClick={() => setMemberOpen(false)}><section className="modal admin-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setMemberOpen(false)} aria-label="إغلاق"><X/></button><div className="section-kicker">بوابة الأعضاء</div><h2>تسجيل دخول الأعضاء</h2><p className="modal-intro">استخدم الرقم الجامعي وكلمة المرور. يجب أن تكون عضويتك معتمدة وحساب الدخول منشأً في Supabase Auth.</p><form onSubmit={memberSignIn} className="form-grid one-col"><label>رقم الكلية / الرقم الجامعي<input inputMode="numeric" value={memberStudentId} onChange={e => setMemberStudentId(e.target.value)} required autoComplete="username"/></label><label>كلمة المرور<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary" disabled={busy}>{busy ? 'جارٍ التحقق...' : 'دخول الأعضاء'}</button></form>{!isSupabaseConfigured && <p className="form-warning">يلزم إعداد Supabase لتفعيل تسجيل الدخول.</p>}</section></div>}
+    {memberOpen && <div className="modal-backdrop" onClick={() => setMemberOpen(false)}><section className="modal admin-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setMemberOpen(false)} aria-label="إغلاق"><X/></button><div className="section-kicker">بوابة الأعضاء</div><h2>تسجيل دخول الأعضاء</h2><p className="modal-intro">استخدم الرقم الجامعي وكلمة المرور. يجب أن تكون عضويتك معتمدة وحساب الدخول منشأً في Supabase Auth.</p><form onSubmit={memberSignIn} className="form-grid one-col"><label>رقم الكلية / الرقم الجامعي<input inputMode="numeric" value={memberStudentId} onChange={e => setMemberStudentId(e.target.value)} required autoComplete="username"/></label><label>كلمة المرور<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary" disabled={busy}>{busy ? 'جارٍ التحقق...' : 'دخول الأعضاء'}</button></form><button type="button" className="text-button" onClick={forgotMemberPassword} disabled={busy}>هل نسيت كلمة المرور؟</button>{!isSupabaseConfigured && <p className="form-warning">يلزم إعداد Supabase لتفعيل تسجيل الدخول.</p>}</section></div>}
 
     {memberInfo && <div className="modal-backdrop" onClick={() => setMemberInfo(null)}><section className="modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setMemberInfo(null)} aria-label="إغلاق"><X/></button><div className="section-kicker">حساب العضو</div><h2>أهلًا {memberInfo.full_name}</h2><p className="modal-intro">بيانات العضوية المعتمدة</p><div className="member-profile"><p><b>الرقم الجامعي:</b> {memberInfo.student_id}</p><p><b>الكلية:</b> {memberInfo.faculty}</p><p><b>الفرقة:</b> {memberInfo.study_year}</p><p><b>حالة العضوية:</b> معتمدة</p></div><button className="primary" onClick={async()=>{await supabase.auth.signOut();setMemberInfo(null);setNotice('تم تسجيل الخروج.')}}>تسجيل الخروج</button></section></div>}
 
