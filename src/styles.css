@@ -39,3 +39,16 @@ body,.site{background:#e9e7e1;color:#17253b}
 .nav-member:hover{background:#f3ead7}
 .programmed-by{grid-column:1/-1;justify-self:center;border:0;background:transparent;color:#d7ad59;font-weight:800;letter-spacing:.3px;padding:8px 12px}
 @media(max-width:800px){.nav-member{width:100%}.public-news{background:#deded9}}
+
+/* Member portal, notification bell and searchable directory */
+.bell-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;border-radius:20px;background:#b42318;color:#fff;font-size:10px;font-weight:900}
+.member-notices-modal{max-width:680px;max-height:88vh;overflow:auto}
+.member-notices-modal .section-kicker{display:flex;align-items:center;gap:8px}
+.notice-list{display:grid;gap:10px;margin:16px 0}
+.notice-card{background:#f8f7f3;border:1px solid #dedbd1;border-right:3px solid #d7ad59;border-radius:8px;padding:13px 15px;margin:10px 0;color:#17345b}
+.notice-card b{display:block;font-size:14px}
+.notice-card p{margin:8px 0;font-size:13px;line-height:1.8;white-space:pre-wrap}
+.notice-card small{font-size:10px;color:#68758a}
+.member-search{width:100%;padding:12px 14px;border:1px solid #cbd0d8;border-radius:7px;background:#f8f7f3;color:#17253b;margin:10px 0 16px;font:inherit}
+.admin-record>button{white-space:nowrap}
+@media(max-width:650px){.member-notices-modal{width:calc(100vw - 24px);padding:22px 16px}.admin-record{flex-wrap:wrap}.admin-record>div{min-width:100%}}
